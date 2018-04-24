@@ -1,0 +1,38 @@
+version: "2"
+services:
+
+  lit1:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit1:/root/.lit
+
+  lit2:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit2:/root/.lit
+
+  litbtcregtest:
+    image: kylemanna/bitcoind
+    restart: always
+    expose: 
+      - "18444"
+    volumes:
+      - ./data/bitcoind:/bitcoin/.bitcoin
+
+  littest:
+    image: lit-docker-tester
+    depends_on: 
+      - litbtcregtest
+      - lit1
+      - lit2
+

@@ -1,0 +1,10 @@
+version: "2"
+services:
+
+  litbtcregtest:
+    image: kylemanna/bitcoind
+    restart: always
+    expose: 
+      - "18444"
+    volumes:
+      - ./data/bitcoind:/bitcoin/.bitcoin
