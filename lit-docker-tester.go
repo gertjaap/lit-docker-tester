@@ -182,6 +182,10 @@ func main() {
 	_, err = commands.SettleContract(rpcCon1, cIdx, 12080, oracleSig)
 	handleErrorIfNeeded(err)
 
+	// This makes LIT1 update its balance with the settlement amount claimed. It will trigger LIT2 to claim its part
+	mineBlockAndWait()
+
+	// This makes LIT2 update its balance
 	mineBlockAndWait()
 
 	lit1Balance, err = commands.GetBalance(rpcCon1)

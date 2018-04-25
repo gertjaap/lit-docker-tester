@@ -22,4 +22,5 @@ sleep 1
 docker exec -ti litdockertester_litbtcregtest_1 bitcoin-cli generate 200 > /dev/null
 docker-compose up -d > /dev/null 2> /dev/null
 
-terminator -l littest > /dev/null 2> /dev/null &
+docker logs litdockertester_littest_1 -f
+
