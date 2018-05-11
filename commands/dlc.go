@@ -59,8 +59,8 @@ type DlcContractSettlementSignature struct {
 
 type DlcContract struct {
 	Idx                                      uint64                           // Index of the contract for referencing in commands
+	TheirIdx                                 uint64                           // Index of the contract on the other peer (so we can reference it in messages)
 	PeerIdx                                  uint32                           // Index of the peer we've offered the contract to or received the contract from
-	PubKey                                   [33]byte                         // Key of the contract
 	CoinType                                 uint32                           // Coin type
 	OracleA, OracleR                         [33]byte                         // Pub keys of the oracle
 	OracleTimestamp                          uint64                           // The time we expect the oracle to publish
@@ -68,10 +68,12 @@ type DlcContract struct {
 	OurFundingAmount, TheirFundingAmount     int64                            // The amounts either side are funding
 	OurChangePKH, TheirChangePKH             [20]byte                         // PKH to which the contracts funding change should go
 	OurFundMultisigPub, TheirFundMultisigPub [33]byte                         // Pubkey used in the funding multisig output
-	OurPayoutPub, TheirPayoutPub             [33]byte                         // Pubkey to which the contracts are supposed to pay out
+	OurPayoutBase, TheirPayoutBase           [33]byte                         // Pubkey to be used in the commit script (combined with oracle pubkey or CSV timeout)
+	OurPayoutPKH, TheirPayoutPKH             [20]byte                         // Pubkeyhash to which the contract pays out (directly)
 	Status                                   DlcContractStatus                // Status of the contract
 	OurFundingInputs, TheirFundingInputs     []DlcContractFundingInput        // Outpoints used to fund the contract
 	TheirSettlementSignatures                []DlcContractSettlementSignature // Signatures for the settlement transactions
+	FundingOutpoint                          wire.OutPoint                    // The outpoint of the funding TX we want to spend in the settlement - for easier monitoring
 }
 
 type DlcContractDivision struct {
@@ -154,13 +156,13 @@ type SetContractFundingReply struct {
 	Success bool
 }
 
-type SetContractSettlementDivisionArgs struct {
+type SetContractDivisionArgs struct {
 	CIdx             uint64
 	ValueFullyOurs   int64
 	ValueFullyTheirs int64
 }
 
-type SetContractSettlementDivisionReply struct {
+type SetContractDivisionReply struct {
 	Success bool
 }
 
@@ -338,13 +340,13 @@ func SetContractFunding(c *rpc.Client, cIdx uint64, ours, theirs int64) (*SetCon
 	return reply, nil
 }
 
-func SetContractSettlementDivision(c *rpc.Client, cIdx uint64, allOurs, allTheirs int64) (*SetContractSettlementDivisionReply, error) {
-	args := new(SetContractSettlementDivisionArgs)
+func SetContractDivision(c *rpc.Client, cIdx uint64, allOurs, allTheirs int64) (*SetContractDivisionReply, error) {
+	args := new(SetContractDivisionArgs)
 	args.CIdx = cIdx
 	args.ValueFullyOurs = allOurs
 	args.ValueFullyTheirs = allTheirs
-	reply := new(SetContractSettlementDivisionReply)
-	err := c.Call("LitRPC.SetContractSettlementDivision", args, reply)
+	reply := new(SetContractDivisionReply)
+	err := c.Call("LitRPC.SetContractDivision", args, reply)
 	if err != nil {
 		return nil, err
 	}
@@ -404,6 +406,117 @@ func SettleContract(c *rpc.Client, cIdx uint64, settleValue int64, oracleSig [32
 	args.OracleSig = oracleSig
 	reply := new(SettleContractReply)
 	err := c.Call("LitRPC.SettleContract", args, reply)
+	if err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+type DlcFwdOffer struct {
+	// Convenience definition for serialization from RPC
+	OType uint8
+	// Index of the offer
+	OIdx uint64
+	// Index of the offer on the other peer
+	TheirOIdx uint64
+	// Index of the peer offering to / from
+	PeerIdx uint32
+	// Coin type
+	CoinType uint32
+	// Pub keys of the oracle and the R point used in the contract
+	OracleA, OracleR [33]byte
+	// time of expected settlement
+	SettlementTime uint64
+	// amount of funding, in sats, each party contributes
+	FundAmt int64
+	// slice of my payouts for given oracle prices
+	Payouts []DlcContractDivision
+
+	// if true, I'm the 'buyer' of the foward asset (and I'm short bitcoin)
+	ImBuyer bool
+
+	// amount of asset to be delivered at settlement time
+	// note that initial price is FundAmt / AssetQuantity
+	AssetQuantity int64
+
+	// Stores if the offer was accepted. When receiving a matching
+	// Contract draft, we can accept that too.
+	Accepted bool
+}
+
+type NewForwardOfferArgs struct {
+	Offer *DlcFwdOffer
+}
+
+type NewForwardOfferReply struct {
+	Offer *DlcFwdOffer
+}
+
+func NewForwardOffer(c *rpc.Client, offer *DlcFwdOffer) (*NewForwardOfferReply, error) {
+
+	args := new(NewForwardOfferArgs)
+	args.Offer = offer
+	reply := new(NewForwardOfferReply)
+	err := c.Call("LitRPC.NewForwardOffer", args, reply)
+	if err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+type ListOffersArgs struct {
+	// none
+}
+
+type ListOffersReply struct {
+	Offers []*DlcFwdOffer
+}
+
+func ListOffers(c *rpc.Client) (*ListOffersReply, error) {
+
+	args := new(ListOffersArgs)
+	reply := new(ListOffersReply)
+	err := c.Call("LitRPC.ListOffers", args, reply)
+	if err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+type DeclineOfferArgs struct {
+	OIdx uint64
+}
+
+type DeclineOfferReply struct {
+	Success bool
+}
+
+func DeclineOffer(c *rpc.Client, oIdx uint64) (*DeclineOfferReply, error) {
+
+	args := new(DeclineOfferArgs)
+	args.OIdx = oIdx
+	reply := new(DeclineOfferReply)
+	err := c.Call("LitRPC.DeclineOffer", args, reply)
+	if err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+type AcceptOfferArgs struct {
+	OIdx uint64
+}
+
+type AcceptOfferReply struct {
+	Success bool
+}
+
+func AcceptOffer(c *rpc.Client, oIdx uint64) (*AcceptOfferReply, error) {
+
+	args := new(AcceptOfferArgs)
+	args.OIdx = oIdx
+	reply := new(AcceptOfferReply)
+	err := c.Call("LitRPC.AcceptOffer", args, reply)
 	if err != nil {
 		return nil, err
 	}

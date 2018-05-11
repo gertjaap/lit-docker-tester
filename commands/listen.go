@@ -24,3 +24,14 @@ func Listen(c *rpc.Client, port string) (*ListeningPortsReply, error) {
 	}
 	return reply, nil
 }
+
+func GetListeningPorts(c *rpc.Client) (*ListeningPortsReply, error) {
+	args := new(NoArgs)
+
+	reply := new(ListeningPortsReply)
+	err := c.Call("LitRPC.GetListeningPorts", args, reply)
+	if err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
