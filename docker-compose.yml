@@ -21,6 +21,86 @@ services:
     volumes:
       - ./data/lit2:/root/.lit
 
+  lit3:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit3:/root/.lit
+
+  lit4:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit4:/root/.lit
+
+  lit5:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit5:/root/.lit
+
+  lit6:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit6:/root/.lit
+
+  lit7:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit7:/root/.lit
+
+  lit8:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit8:/root/.lit
+
+  lit9:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit9:/root/.lit
+
+  lit10:
+    image: lit
+    depends_on: 
+      - litbtcregtest
+    restart: always
+    expose:
+      - "8001"
+    volumes:
+      - ./data/lit10:/root/.lit
+
   litbtcregtest:
     image: kylemanna/bitcoind
     restart: always
@@ -35,4 +115,11 @@ services:
       - litbtcregtest
       - lit1
       - lit2
-
+      - lit3
+      - lit4
+      - lit5
+      - lit6
+      - lit7
+      - lit8
+      - lit9
+      - lit10

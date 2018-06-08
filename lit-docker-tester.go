@@ -15,5 +15,5 @@ func handleErrorIfNeeded(err error) {
 }
 
 func main() {
-	testscripts.ConnectAndFund()
+	testscripts.MultihopTest()
 }

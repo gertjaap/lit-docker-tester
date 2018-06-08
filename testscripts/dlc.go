@@ -11,10 +11,14 @@ import (
 func DlcTest() {
 	fmt.Println("LIT DLC Tester Script")
 
-	rpcCon1, rpcCon2, wsConn1, wsConn2 := ConnectAndFund()
-	defer wsConn1.Close()
-	defer wsConn2.Close()
+	rpcConns, wsConns := ConnectAndFund()
+	for _, wsConn := range wsConns {
+		defer wsConn.Close()
+	}
 
+	rpcCon1 := rpcConns[0]
+	rpcCon2 := rpcConns[1]
+	ConnectTogether(rpcCon1, rpcCon2, "lit1")
 	oIdx, _ := ImportOracle(rpcCon1, rpcCon2)
 
 	fmt.Println("Creating contract on LIT1")
