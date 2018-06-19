@@ -5,6 +5,7 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"strings"
+	"time"
 
 	"github.com/gertjaap/lit-docker-tester/btc"
 	"github.com/gertjaap/lit-docker-tester/commands"
@@ -23,6 +24,19 @@ func ConnectAndFund() ([]*rpc.Client, []*websocket.Conn) {
 	for i := 0; i < 10; i++ {
 		fmt.Printf("Connecting to LIT%d\n", i+1)
 		wsConn, err := websocket.Dial(fmt.Sprintf("ws://lit%d:8001/ws", i+1), "", "http://127.0.0.1/")
+		attempts := 0
+		for {
+			if err == nil {
+				break
+			}
+			if attempts > 20 {
+				break
+			}
+			fmt.Printf("Unable to connect to lit%d, retrying...\n", i+1)
+			time.Sleep(1000 * time.Millisecond)
+			wsConn, err = websocket.Dial(fmt.Sprintf("ws://lit%d:8001/ws", i+1), "", "http://127.0.0.1/")
+			attempts++
+		}
 		wsConns[i] = wsConn
 		handleErrorIfNeeded(err)
 		rpcConns[i] = jsonrpc.NewClient(wsConns[i])
@@ -56,15 +70,7 @@ func ConnectAndFund() ([]*rpc.Client, []*websocket.Conn) {
 }
 
 func ConnectTogether(rpcCon1, rpcCon2 *rpc.Client, hostName1 string) {
-	lit1ListenDetails, err := commands.Listen(rpcCon1, ":2448")
-	handleErrorIfNeeded(err)
-	if err != nil { // already listening
-		lit1ListenDetails, _ = commands.GetListeningPorts(rpcCon1)
-	}
-
-	// make two also listen just in case
-	_, err = commands.Listen(rpcCon2, ":2448")
-	handleErrorIfNeeded(err)
+	lit1ListenDetails, _ := commands.GetListeningPorts(rpcCon1)
 
 	con2Result, err := commands.Connect(rpcCon2, lit1ListenDetails.Adr+"@"+hostName1)
 	handleErrorIfNeeded(err)

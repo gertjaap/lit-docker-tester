@@ -6,7 +6,7 @@ echo "Building test container..."
 docker build . --quiet -t lit-docker-tester 
 
 echo "Setting up everything..."
-docker-compose down > /dev/null 2> /dev/null
+docker-compose down >> run.log 2>> run-error.log
 
 sudo rm -rf data
 mkdir -p data/lit1
@@ -41,10 +41,10 @@ hexdump -n 32 -e '8/4 "%08x"' /dev/urandom > data/lit7/privkey.hex
 hexdump -n 32 -e '8/4 "%08x"' /dev/urandom > data/lit8/privkey.hex
 hexdump -n 32 -e '8/4 "%08x"' /dev/urandom > data/lit9/privkey.hex
 hexdump -n 32 -e '8/4 "%08x"' /dev/urandom > data/lit10/privkey.hex
-docker-compose -f docker-compose-boot.yml up -d > /dev/null 2> /dev/null
-sleep 1
-docker exec -ti litdockertester_litbtcregtest_1 bitcoin-cli generate 200 > /dev/null
-docker-compose up -d > /dev/null 2> /dev/null
+docker-compose -f docker-compose-boot.yml up -d >> run.log 2>> run-error.log
+sleep 3
+docker exec -ti litdockertester_litbtcregtest_1 bitcoin-cli generate 200 >> run.log 2>> run-error.log
+docker-compose up -d >> run.log 2>> run-error.log
 
 docker logs litdockertester_littest_1 -f
 

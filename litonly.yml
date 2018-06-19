@@ -111,22 +111,6 @@ services:
     volumes:
       - ./data/bitcoind:/bitcoin/.bitcoin
 
-  littest:
-    image: lit-docker-tester
-    depends_on: 
-      - litbtcregtest
-      - lit1
-      - lit2
-      - lit3
-      - lit4
-      - lit5
-      - lit6
-      - lit7
-      - lit8
-      - lit9
-      - lit10
-
-
   littracker:
     image: littracker
     restart: always
