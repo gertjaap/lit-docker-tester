@@ -79,7 +79,7 @@ func FundChannelBetween(rpcCon1, rpcCon2 *rpc.Client, hostName1 string, coinType
 		}
 	}
 
-	reply, err := commands.Fund(rpcCon1, peerIdx, 257, 1000000, 500000)
+	reply, err := commands.Fund(rpcCon1, peerIdx, 257, amount, initialSend)
 	handleErrorIfNeeded(err)
 	fmt.Printf("%s\n", reply.Status)
 

@@ -7,6 +7,7 @@ RUN go get golang.org/x/net/websocket
 RUN go get github.com/btcsuite/btcd
 RUN go get github.com/btcsuite/btcutil
 RUN go get github.com/fatih/color
+RUN go get github.com/gertjaap/lit/wire
 COPY . /usr/local/go/src/github.com/gertjaap/lit-docker-tester
 WORKDIR /usr/local/go/src/github.com/gertjaap/lit-docker-tester
 RUN go build
