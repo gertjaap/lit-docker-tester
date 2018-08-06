@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcutil"
 )
@@ -78,4 +79,20 @@ func SendCoins(addr string, amt int64) error {
 	}
 
 	return nil
+}
+
+func CheckTx(txidHex string) (bool, error) {
+	client, err := GetRpcClient()
+	if err != nil {
+		return false, err
+	}
+	txHash, err := chainhash.NewHashFromStr(txidHex)
+	if err != nil {
+		return false, err
+	}
+	tx, err := client.GetRawTransaction(txHash)
+	if err != nil {
+		return false, err
+	}
+	return (tx.Hash().String() == txidHex), nil
 }

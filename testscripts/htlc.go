@@ -13,6 +13,17 @@ import (
 	"github.com/gertjaap/lit-docker-tester/btc"
 )
 
+type ChannelOperationType int
+
+const (
+	OpDeltaSig    ChannelOperationType = 0
+	OpHashSig     ChannelOperationType = 1
+	OpPreimageSig ChannelOperationType = 2
+)
+
+var globalPreImage [16]byte
+var globalHash [32]byte
+
 func FundChannels(rpcConns []*rpc.Client) {
 	fmt.Println("Funding channel between lit1 and lit2")
 	FundChannelBetween(rpcConns[0], rpcConns[1], "lit1", 257, 10000000, 5000000)
@@ -29,8 +40,8 @@ func FundChannels(rpcConns []*rpc.Client) {
 	fmt.Println("Funding channel between lit5 and lit6")
 	FundChannelBetween(rpcConns[4], rpcConns[5], "lit5", 257, 10000000, 5000000)
 	btc.MineBlocks(1)
-	fmt.Println("Funding channel between lit1 and lit5")
-	FundChannelBetween(rpcConns[0], rpcConns[5], "lit1", 257, 10000000, 5000000)
+	fmt.Println("Funding channel between lit6 and lit1")
+	FundChannelBetween(rpcConns[5], rpcConns[0], "lit6", 257, 10000000, 5000000)
 	btc.MineBlocks(1)
 	fmt.Println("Mining two blocks to confirm channels")
 	btc.MineBlocks(1)
@@ -49,6 +60,8 @@ func HtlcTest() {
 		defer wsConn.Close()
 	}
 
+	globalPreImage, globalHash = GetPreimageAndHash()
+
 	FundChannels(rpcConns)
 	/*HtlcTestMultipleOffChain(rpcConns, 1, false)
 	HtlcTestMultipleOffChain(rpcConns, 10, false)
@@ -57,10 +70,73 @@ func HtlcTest() {
 	HtlcTestMultipleOffChainTimeout(rpcConns, 1, false)
 	HtlcTestMultipleOffChainTimeout(rpcConns, 10, false)
 	HtlcTestMultipleOffChainTimeout(rpcConns, 3, true)
-	*/
+	HtlcTestOnChain(rpcConns[0], rpcConns[5], 2, 2, false, false)
+	HtlcTestOnChain(rpcConns[1], rpcConns[2], 2, 1, true, false)
+	HtlcTestOnChain(rpcConns[3], rpcConns[4], 2, 1, false, true)
+	HtlcTestOnChain(rpcConns[4], rpcConns[5], 2, 1, true, true)*/
 
-	HtlcTestMultipleOnChain(rpcConns, 1, false)
+	//=== HashSig-HashSig collision
+	//HtlcTestCollision(rpcConns[0], rpcConns[1], 1, 1, 0, 0, OpHashSig, OpHashSig)
 
+	//=== HashSig-Deltasig collision
+	//HtlcTestCollision(rpcConns[0], rpcConns[1], 1, 1, 0, 0, OpHashSig, OpDeltaSig)
+
+	//=== HashSig-PreimageSig collision
+	//idx := AddHtlc(rpcConns[0], 1, 200000, globalHash)
+	//HtlcTestCollision(rpcConns[0], rpcConns[1], 1, 1, idx, 0, OpPreimageSig, OpHashSig)
+
+	//=== PreimageSig-PreimageSig collision
+	//idx1 := AddHtlc(rpcConns[0], 1, 200000, globalHash)
+	//idx2 := AddHtlc(rpcConns[1], 1, 200000, globalHash)
+	//HtlcTestCollision(rpcConns[0], rpcConns[1], 1, 1, idx1, idx2, OpPreimageSig, OpPreimageSig)
+
+	//=== PreimageSig-Deltasig collision
+	//idx := AddHtlc(rpcConns[0], 1, 200000, globalHash)
+	//HtlcTestCollision(rpcConns[0], rpcConns[1], 1, 1, idx, 0, OpPreimageSig, OpDeltaSig)
+
+	//=== DeltaSig-DeltaSig collision
+	HtlcTestCollision(rpcConns[0], rpcConns[1], 1, 1, 0, 0, OpDeltaSig, OpDeltaSig)
+}
+
+func HtlcTestCollision(rpcConn1, rpcConn2 *rpc.Client, chanIdx1, chanIdx2, htlcIdx1, htlcIdx2 uint32, op1, op2 ChannelOperationType) {
+	done1 := make(chan bool)
+	done2 := make(chan bool)
+	go testCollision(rpcConn1, chanIdx1, op1, htlcIdx1, done1)
+	go testCollision(rpcConn2, chanIdx2, op2, htlcIdx2, done2)
+
+	isDone := <-done1
+	fmt.Printf("Collision test done1: %t\n", isDone)
+	isDone = <-done2
+	fmt.Printf("Collision test done2: %t\n", isDone)
+
+	fmt.Println("Checking if channel is still usable by pushing some funds back and forth...")
+	// Check if channel is still in usable state afterwards
+	for i := 0; i < 10; i++ {
+		fmt.Printf("Push %d\n", i)
+		Push(rpcConn1, chanIdx1, 10000)
+		Push(rpcConn2, chanIdx2, 10000)
+	}
+
+	fmt.Println("Checking if channel is still usable for HTLC by adding and clearing a bunch of HTLC off-chain")
+	for i := 0; i < 10; i++ {
+		preimage, hash := GetPreimageAndHash()
+		idx := AddHtlc(rpcConn1, chanIdx1, 200000, hash)
+		fmt.Printf("Added HTLC %d\n", idx)
+		ClearHtlc(rpcConn2, chanIdx2, idx, preimage)
+		fmt.Printf("Cleared HTLC %d\n", idx)
+	}
+	fmt.Println("Collision test success")
+}
+
+func testCollision(rpcConn *rpc.Client, chanIdx uint32, op ChannelOperationType, htlcIdx uint32, done chan bool) {
+	if op == OpHashSig {
+		AddHtlc(rpcConn, chanIdx, 200000, globalHash)
+	} else if op == OpPreimageSig {
+		ClearHtlc(rpcConn, chanIdx, htlcIdx, globalPreImage)
+	} else {
+		Push(rpcConn, chanIdx, 10000)
+	}
+	done <- true
 }
 
 func Push(rpcConn *rpc.Client, chanIdx uint32, amt int64) {
@@ -74,7 +150,7 @@ func ClearHtlc(rpcConn *rpc.Client, chanIdx, htlcIdx uint32, preimage [16]byte) 
 }
 
 func AddHtlc(rpcConn *rpc.Client, chanIdx uint32, amt int64, hash [32]byte) uint32 {
-	return AddHtlcWithCustomLocktime(rpcConn, chanIdx, amt, hash, 5)
+	return AddHtlcWithCustomLocktime(rpcConn, chanIdx, amt, hash, 20)
 }
 
 func AddHtlcWithCustomLocktime(rpcConn *rpc.Client, chanIdx uint32, amt int64, hash [32]byte, locktime uint32) uint32 {
@@ -230,68 +306,160 @@ func HtlcTestMultipleOffChainTimeout(rpcConns []*rpc.Client, count int, pushes b
 func Break(rpcConn *rpc.Client, chanIdx uint32) {
 	reply, err := commands.Break(rpcConn, chanIdx)
 	handleErrorIfNeeded(err)
-	fmt.Println("Breaking channel success: %s", reply.Status)
+	fmt.Printf("Breaking channel success: %s\n", reply.Status)
 }
 
 func ClaimHtlc(rpcConn *rpc.Client, preimage [16]byte) {
 	reply, err := commands.ClaimHTLC(rpcConn, preimage)
 	handleErrorIfNeeded(err)
 	for _, txid := range reply.Txids {
-		fmt.Printf("Claimed HTLC using TXID: [%x]\n", txid)
+		fmt.Printf("Claimed HTLC using TXID: [%s]\n", txid)
 	}
 }
 
-func HtlcTestMultipleOnChain(rpcConns []*rpc.Client, count int, timeout bool) {
-	fmt.Println("Testing multiple concurrent HTLCs on-chain success")
-
-	preimages := make([][16]byte, count)
-	hashes := make([][32]byte, count)
-	htlcIdxs := make([]uint32, count)
-	for i := 0; i < count; i++ {
-		fmt.Printf("Adding HTLC to rpcConns[%d] channel 2\n", i)
-		preimages[i], hashes[i] = GetPreimageAndHash()
-		htlcIdxs[i] = AddHtlc(rpcConns[i], 2, 200000, hashes[i])
-		fmt.Printf("Success, idx: %d\n", htlcIdxs[i])
+func CheckUtxos(rpcConn *rpc.Client, amountsExpected []int64) {
+	utxos, err := commands.ListUtxos(rpcConn)
+	handleErrorIfNeeded(err)
+	foundUtxos := make([]bool, len(amountsExpected))
+	for _, t := range utxos.Txos {
+		for i, amt := range amountsExpected {
+			if t.CoinType == "regtest" && t.Amt == amt && foundUtxos[i] == false {
+				foundUtxos[i] = true
+				break
+			}
+		}
 	}
 
-	fmt.Println("Checking channel balances...")
+	for i, found := range foundUtxos {
+		if !found {
+			for _, t := range utxos.Txos {
+				fmt.Printf("Have TXO [%d]\n", t.Amt)
+			}
+			handleErrorIfNeeded(fmt.Errorf("Did not find expected utxos at index %d worth %d", i, amountsExpected[i]))
+		}
+	}
+}
 
-	for i := 0; i < count; i++ {
-		CheckChannelBalance(rpcConns[i], 2, 4800000)
+func GetLatestWitAddress(rpcConn *rpc.Client) string {
+	reply, err := commands.GetAddresses(rpcConn)
+	handleErrorIfNeeded(err)
+	if len(reply.WitAddresses) == 0 {
+		handleErrorIfNeeded(fmt.Errorf("No addresses returned"))
+	}
+	return reply.WitAddresses[len(reply.WitAddresses)-1]
+}
+
+func HtlcTestOnChain(rpcConn, rpcConn2 *rpc.Client, chanIdx, chanIdx2 uint32, timeout, theyBreak bool) {
+	whoBreaks := "offerer breaks"
+	claimType := "success"
+	if timeout {
+		claimType = "timeout"
 	}
 
-	fmt.Println("Breaking channels...")
-
-	for i := 0; i < count; i++ {
-		Break(rpcConns[i], 2)
+	if theyBreak {
+		whoBreaks = "recipient breaks"
 	}
 
-	btc.MineBlocks(5)
-	time.Sleep(time.Second * 5)
+	fmt.Printf("Testing on chain HTLC %s, %s\n", claimType, whoBreaks)
+	fee := int64(80000)
+
+	preimage, hash := GetPreimageAndHash()
+	AddHtlc(rpcConn, chanIdx, 200000, hash)
+
+	fmt.Println("Checking channel balance...")
+
+	CheckChannelBalance(rpcConn, 2, 4800000)
+
+	fmt.Println("Breaking channel...")
+
+	if theyBreak {
+		Break(rpcConn2, chanIdx2)
+	} else {
+		Break(rpcConn, chanIdx)
+	}
+
+	btc.MineBlocks(1)
+	time.Sleep(time.Second * 1)
 
 	if timeout {
-		// timeout the HTLCs by mining a couple blocks
+		// timeout the HTLC by mining a couple blocks
 		btc.MineBlocks(100)
 	} else {
-		// claim the HTLCs using the preimages
-		for i := 0; i < count; i++ {
-			ClaimHtlc(rpcConns[i], preimages[i])
-		}
+		// claim the HTLC using the preimage
+		ClaimHtlc(rpcConn2, preimage)
 	}
 
-	btc.MineBlocks(5)
-	time.Sleep(time.Second * 5)
-	fmt.Println("Checking wallet balances...")
-
-	for i := 0; i < count; i++ {
-		balances, err := commands.GetBalance(rpcConns[i])
-		handleErrorIfNeeded(err)
-		for _, b := range balances.Balances {
-			fmt.Printf("Node [%d] coin [%d] witconf [%d]\n", i, b.CoinType, b.MatureWitty)
-		}
+	for i := 0; i < 10; i++ {
+		btc.MineBlocks(1)
+		time.Sleep(time.Second * 1)
 	}
 
-	fmt.Printf("Done - %d concurrent on-chain success test succesful\n", count)
+	fmt.Println("Checking UTXOs...")
+
+	amountsExpected := []int64{
+		4800000 - fee,
+	}
+	if timeout {
+		amountsExpected = append(amountsExpected, 200000-fee)
+	}
+	CheckUtxos(rpcConn, amountsExpected)
+
+	amountsExpected = []int64{
+		5000000 - fee,
+	}
+	if !timeout {
+		amountsExpected = append(amountsExpected, 200000-fee)
+	}
+	CheckUtxos(rpcConn2, amountsExpected)
+
+	fmt.Println("Trying spending all UTXOs to own address")
+
+	sendAmount := int64(0)
+	sendAmount2 := int64(0)
+	balances, err := commands.GetBalance(rpcConn)
+	handleErrorIfNeeded(err)
+	sendAmount = balances.Balances[0].MatureWitty
+
+	balances, err = commands.GetBalance(rpcConn2)
+	handleErrorIfNeeded(err)
+	sendAmount2 = balances.Balances[0].MatureWitty
+
+	adr := GetLatestWitAddress(rpcConn)
+	txids, err := commands.Send(rpcConn, adr, sendAmount-fee)
+	handleErrorIfNeeded(err)
+	if len(txids.Txids) != 1 {
+		handleErrorIfNeeded(fmt.Errorf("Unexpected number of TXs in TXIDReply: %d", len(txids.Txids)))
+	}
+
+	fmt.Printf("Spent using TXID %s\n", txids.Txids[0])
+
+	adr = GetLatestWitAddress(rpcConn2)
+	txids2, err := commands.Send(rpcConn2, adr, sendAmount2-fee)
+	handleErrorIfNeeded(err)
+	if len(txids2.Txids) != 1 {
+		handleErrorIfNeeded(fmt.Errorf("Unexpected number of TXs in TXIDReply: %d", len(txids2.Txids)))
+	}
+
+	fmt.Printf("Spent using TXID %s\n", txids.Txids[0])
+
+	fmt.Println("Mining some blocks...")
+	btc.MineBlocks(2)
+
+	fmt.Println("Looking up the spends on the blockchain...")
+
+	success, err := btc.CheckTx(txids.Txids[0])
+	handleErrorIfNeeded(err)
+	if !success {
+		handleErrorIfNeeded(fmt.Errorf("Did not find transaction %s on the blockchain", txids.Txids[0]))
+	}
+
+	success2, err := btc.CheckTx(txids2.Txids[0])
+	handleErrorIfNeeded(err)
+	if !success2 {
+		handleErrorIfNeeded(fmt.Errorf("Did not find transaction %s on the blockchain", txids.Txids[0]))
+	}
+
+	fmt.Printf("Done - Testing on chain HTLC %s, %s succesful\n", claimType, whoBreaks)
 }
 
 /*

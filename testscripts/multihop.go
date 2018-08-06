@@ -63,20 +63,23 @@ func FundChannelBetween(rpcCon1, rpcCon2 *rpc.Client, hostName1 string, coinType
 	handleErrorIfNeeded(err)
 
 	ConnectTogether(rpcCon1, rpcCon2, hostName1)
-	peers2, err := commands.ListConnections(rpcCon1)
-
 	peerIdx := uint32(0)
-	for _, peer := range peers2.Connections {
-		found := false
-		for _, existingPeer := range peers1.Connections {
-			if existingPeer.PeerNumber == peer.PeerNumber && existingPeer.RemoteHost == peer.RemoteHost {
-				found = true
+	for peerIdx == 0 {
+		peers2, err := commands.ListConnections(rpcCon1)
+		handleErrorIfNeeded(err)
+		for _, peer := range peers2.Connections {
+			found := false
+			for _, existingPeer := range peers1.Connections {
+				if existingPeer.PeerNumber == peer.PeerNumber && existingPeer.RemoteHost == peer.RemoteHost {
+					found = true
+				}
+			}
+			if !found {
+				peerIdx = peer.PeerNumber
+				break
 			}
 		}
-		if !found {
-			peerIdx = peer.PeerNumber
-			break
-		}
+		time.Sleep(time.Millisecond * 500)
 	}
 
 	reply, err := commands.Fund(rpcCon1, peerIdx, 257, amount, initialSend)
